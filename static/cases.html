@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lịch sử ca</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <div id="list">
+    <h1>Lịch sử ca</h1>
+    <p class="sub">Các báo cáo đã phân tích và lưu trong cơ sở dữ liệu. Bấm vào một ca để xem chi tiết.</p>
+    <div class="row" style="margin:0 0 14px"><input type="text" id="q" placeholder="Tìm theo nội dung báo cáo..." style="max-width:380px"><button class="btn secondary" id="btnQ">Tìm</button></div>
+    <div class="err" id="listErr"></div>
+    <div class="caselist" id="rows"></div>
+    <div class="row"><button class="btn secondary" id="prev">← Trang trước</button><span class="muted" id="pageInfo"></span><button class="btn secondary" id="next">Trang sau →</button></div>
+  </div>
+
+  <div id="detail" hidden>
+    <p><a href="/cases">← Quay lại danh sách</a></p>
+    <h1 id="dTitle"></h1>
+    <div class="err" id="dErr"></div>
+    <section class="card"><h2>Báo cáo</h2><div id="dLegend"></div><div class="reportbox" id="dText"></div></section>
+    <section class="card"><h2>Bệnh được nhận diện lúc lưu</h2><div class="groups" id="dFind"></div></section>
+    <section class="card"><h2>Ảnh đã sinh và đánh giá</h2><div id="dGens"></div></section>
+  </div>
+</main>
+<script src="/static/nav.js"></script>
+<script src="/static/hl.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const E = hlEsc;
+const PAGE = 20;
+let offset = 0, total = 0, Q = '';
+const STATUS_VI = { supported: ['Được hỗ trợ (đã vẽ)', 'ok'], unsupported: ['Chưa hỗ trợ', 'mute'], negated: ['Bị loại do phủ định', 'bad'], uncertain: ['Có từ không chắc chắn', ''], ner_only: ['Chỉ NER thấy', ''] };
+const tags = (arr, cls) => arr.length ? arr.map(x => `<span class="tag ${cls}">${E(x)}</span>`).join('') : '<span class="none">không có</span>';
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let d = ''; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' && d ? d : 'Lỗi ' + r.status); }
+  return r.json();
+}
+
+async function loadList() {
+  $('listErr').textContent = '';
+  try {
+    const d = await api(`/api/reports?limit=${PAGE}&offset=${offset}&q=${encodeURIComponent(Q)}`);
+    total = d.total;
+    $('rows').innerHTML = d.items.map(it => `
+      <a class="caserow" href="/cases?id=${it.id}">
+        ${it.url ? `<img class="th" src="${E(it.url)}" alt="" loading="lazy">` : '<div class="th">chưa có ảnh</div>'}
+        <div>
+          <p class="txt">${E(it.report)}</p>
+          <div>
+            <span class="tag mute">#${it.id}</span><span class="tag mute">${E(it.modality || 'không rõ')} / ${E(it.region || 'không rõ')}</span>
+            ${it.supported.map(x => `<span class="tag ok">${E(x)}</span>`).join('')}
+            ${it.n_negated ? `<span class="tag bad">${it.n_negated} bị phủ định</span>` : ''}
+          </div>
+          <div class="meta">${E(it.created_at.replace('T', ' '))} · ${it.n_generations} ảnh · ${it.n_ratings} lượt chấm</div>
+        </div>
+      </a>`).join('') || '<p class="muted">Chưa có ca nào' + (Q ? ' khớp với từ khóa.' : '. Hãy phân tích và sinh ảnh ở trang chủ trước.') + '</p>';
+    const from = total ? offset + 1 : 0, to = Math.min(offset + PAGE, total);
+    $('pageInfo').textContent = `${from}–${to} / ${total} ca`;
+    $('prev').disabled = offset <= 0; $('next').disabled = offset + PAGE >= total;
+  } catch (e) { $('listErr').textContent = e.message; }
+}
+$('prev').onclick = () => { offset = Math.max(0, offset - PAGE); loadList(); };
+$('next').onclick = () => { offset += PAGE; loadList(); };
+$('btnQ').onclick = () => { Q = $('q').value.trim(); offset = 0; loadList(); };
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnQ').click(); });
+
+const stars = v => v == null ? '-' : v;
+async function loadDetail(id) {
+  $('list').hidden = true; $('detail').hidden = false;
+  try {
+    const d = await api('/api/reports/' + encodeURIComponent(id));
+    document.title = 'Ca #' + d.id;
+    $('dTitle').textContent = `Ca #${d.id} · ${d.created_at.replace('T', ' ')}`;
+    $('dText').textContent = d.report;
+    api('/api/parse', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ report: d.report }) })
+      .then(p => { $('dLegend').innerHTML = HL_LEGEND; $('dText').innerHTML = renderHighlight(p.text, p.analysis.hits); })
+      .catch(() => {});
+    const by = {}; d.findings.forEach(f => (by[f.status] = by[f.status] || []).push(f.disease));
+    $('dFind').innerHTML = `<div class="box"><b>Loại ảnh / vùng</b><span class="tag">${E(d.modality || 'không rõ')}</span><span class="tag">${E(d.region || 'không rõ vùng')}</span></div>` +
+      Object.keys(STATUS_VI).map(k => `<div class="box"><b>${STATUS_VI[k][0]}</b>${tags(by[k] || [], STATUS_VI[k][1])}</div>`).join('');
+    $('dGens').innerHTML = d.generations.map(g => `
+      <div class="gen">
+        <img src="${E(g.url)}" alt="Ảnh ${g.id}" loading="lazy">
+        <div>
+          <div><b>Ảnh #${g.id}</b> <span class="tag ${g.reliability === 'low' || g.reliability === 'weak' ? '' : 'mute'}">độ tin cậy: ${E(g.reliability || 'không rõ')}</span></div>
+          <div class="prompt">${E(g.prompt)}</div>
+          <div class="meta">Bệnh: ${E(g.diseases || '(không có)')} · seed ${stars(g.seed)} · ${E(g.lora_name || '')} · ${stars(g.steps)} bước · guidance ${stars(g.guidance)}</div>
+          <div class="meta">Mô hình nền: ${E(g.model_id || '')}</div>
+          <h3 style="font-size:.95rem;margin:12px 0 6px">Đánh giá (${g.ratings.length})</h3>
+          ${g.ratings.length ? `<div style="overflow-x:auto"><table><tr><th>Người chấm</th><th>Đúng bệnh (1-5)</th><th>Đúng loại ảnh</th><th>Giống thật (1-5)</th><th>Nhận xét</th></tr>` +
+            g.ratings.map(r => `<tr><td>${E(r.rater)}</td><td>${stars(r.disease_score)}</td><td>${r.modality_ok == null ? '-' : r.modality_ok ? 'Đúng' : 'Sai'}</td><td>${stars(r.realism_score)}</td><td style="text-align:left">${E(r.comment)}</td></tr>`).join('') + '</table></div>'
+            : '<div class="none">Chưa có đánh giá. Chuyên gia có thể chấm ở trang <a href="/rate">Chấm điểm</a>.</div>'}
+        </div>
+      </div>`).join('') || '<p class="muted">Ca này chưa có ảnh nào (có thể do không có bệnh được hỗ trợ hoặc mô hình sinh ảnh đang tắt).</p>';
+  } catch (e) { $('dErr').textContent = e.message; }
+}
+
+const id = new URLSearchParams(location.search).get('id');
+if (id) loadDetail(id); else loadList();
+</script>
+</body></html>

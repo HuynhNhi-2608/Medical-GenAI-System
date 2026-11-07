@@ -1,0 +1,13 @@
+# Cài PyTorch riêng TRƯỚC (bản có CUDA), xem hướng dẫn trong README.md
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+pyodbc>=5.0
+python-dotenv>=1.0
+pillow>=10.0
+transformers>=4.40
+diffusers>=0.30
+peft>=0.11
+accelerate>=0.30
+sentencepiece>=0.2
+safetensors>=0.4

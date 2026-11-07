@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thử phân tích báo cáo</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Thử phân tích báo cáo</h1>
+  <p class="sub">Dán một báo cáo tiếng Việt để xem hệ thống nhận diện bệnh, xử lý phủ định và ghép prompt ra sao. Trang này chỉ phân tích, không sinh ảnh nên chạy rất nhanh.</p>
+  <div class="banner">Chỉ nhập <strong>dữ liệu giả lập</strong>, không nhập thông tin bệnh nhân thật.</div>
+
+  <section class="card">
+    <textarea id="report" placeholder="Ví dụ: Chụp CT ngực: viêm phổi thùy dưới phải, không thấy tràn khí màng phổi."></textarea>
+    <div class="muted" style="margin-top:8px">Thử nhanh bằng ví dụ mẫu:</div>
+    <div class="examples" id="examples"></div>
+    <div class="row" style="margin-top:4px"><button class="btn" id="btnGo">Phân tích</button></div>
+    <div class="err" id="err"></div>
+  </section>
+
+  <div id="out" hidden>
+    <section class="card">
+      <h2>1. Văn bản đã tô màu</h2>
+      <div id="legend"></div>
+      <div class="reportbox" id="text"></div>
+      <div class="muted" style="margin-top:8px">Rê chuột vào từ được tô màu để xem lý do.</div>
+    </section>
+
+    <section class="card">
+      <h2>2. Kết quả phân loại</h2>
+      <div class="groups" id="groups"></div>
+      <div class="banner" id="rel" style="margin:12px 0 0"></div>
+    </section>
+
+    <section class="card">
+      <h2>3. Từng thuật ngữ tìm thấy</h2>
+      <div style="overflow-x:auto"><table id="hits" class="leftcols"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>4. Prompt sẽ gửi cho mô hình sinh ảnh</h2>
+      <div class="muted">Gộp bệnh vào một ảnh (tối đa 3 bệnh mỗi ảnh):</div><div id="pc"></div>
+      <div class="muted" style="margin-top:10px">Mỗi bệnh một ảnh:</div><div id="pp"></div>
+      <div class="muted" style="margin-top:10px">Negative prompt (mọi ảnh đều dùng):</div><div class="prompt" id="neg"></div>
+    </section>
+  </div>
+</main>
+<script src="/static/nav.js"></script>
+<script src="/static/hl.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const EXAMPLES = [
+  ['Có phủ định', 'Chụp CT ngực: viêm phổi thùy dưới phải, tràn dịch màng phổi trái. Không thấy tràn khí màng phổi.'],
+  ['Nghi ngờ', 'X-quang ngực thẳng: bóng tim to. Nghi ngờ xẹp phổi thùy trên phải, không có tràn dịch màng phổi.'],
+  ['Từ "nhưng"', 'CT sọ não: không có xuất huyết nội sọ nhưng có gãy xương sọ.'],
+  ['Bệnh chưa hỗ trợ', 'Siêu âm bụng: sỏi túi mật, gan nhiễm mỡ. Chưa thấy u gan.'],
+  ['Nhiều bệnh', 'CT bụng có cản quang: u gan, nang gan, tắc ruột.'],
+  ['Vùng yếu', 'MRI cột sống: thoát vị đĩa đệm L4-L5, loãng xương.'],
+];
+$('examples').innerHTML = EXAMPLES.map((e, i) => `<button data-i="${i}">${hlEsc(e[0])}</button>`).join('');
+$('examples').onclick = e => { const b = e.target.closest('button'); if (!b) return; $('report').value = EXAMPLES[+b.dataset.i][1]; go(); };
+
+const chips = (arr, cls) => arr && arr.length ? arr.map(x => `<span class="tag ${cls}">${hlEsc(x)}</span>`).join('') : '<span class="none">không có</span>';
+const STATUS = h => h.negated ? '<span class="tag bad">phủ định</span>' : h.uncertain ? '<span class="tag">không chắc chắn</span>' : h.supported ? '<span class="tag ok">được hỗ trợ</span>' : '<span class="tag mute">chưa hỗ trợ</span>';
+const promptList = jobs => jobs.length ? jobs.map(j => `<div class="prompt">${hlEsc(j.prompt)}</div>`).join('') : '<div class="none">Không có bệnh nào được hỗ trợ nên không tạo prompt.</div>';
+
+async function go() {
+  const report = $('report').value.trim();
+  if (report.length < 3) { $('err').textContent = 'Hãy nhập báo cáo (ít nhất 3 ký tự).'; return; }
+  $('err').textContent = ''; $('btnGo').disabled = true;
+  try {
+    const r = await fetch('/api/parse', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ report }) });
+    if (!r.ok) { let d = ''; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' && d ? d : 'Lỗi ' + r.status); }
+    show(await r.json());
+  } catch (e) { $('err').textContent = e.message; }
+  $('btnGo').disabled = false;
+}
+function show(d) {
+  const a = d.analysis;
+  $('out').hidden = false;
+  $('legend').innerHTML = HL_LEGEND;
+  $('text').innerHTML = renderHighlight(d.text, a.hits);
+  $('groups').innerHTML = [
+    ['Loại ảnh / vùng', `<span class="tag">${hlEsc(a.modality)}</span><span class="tag">${hlEsc(a.region || 'không rõ vùng')}</span>`],
+    ['Sẽ vẽ ảnh (được hỗ trợ)', chips(a.supported, 'ok')],
+    ['Chưa hỗ trợ sinh ảnh', chips(a.unsupported, 'mute')],
+    ['Bị loại do phủ định', chips(a.excluded_negated, 'bad')],
+    ['Có từ "không chắc chắn"', chips(a.uncertain, '')],
+    ['Chỉ NER thấy', a.ner_used ? chips(a.ner_only, '') : '<span class="none">NER đang tắt</span>'],
+  ].map(([t, h]) => `<div class="box"><b>${t}</b>${h}</div>`).join('');
+  $('rel').textContent = d.reliability.message;
+  $('hits').innerHTML = a.hits.length
+    ? '<tr><th>Thuật ngữ trong báo cáo</th><th>Tên tiếng Anh</th><th>Trạng thái</th><th>Lý do</th></tr>' + a.hits.map(h =>
+        `<tr><td>${hlEsc(h.term)}</td><td>${hlEsc(h.en)}</td><td>${STATUS(h)}</td><td>${h.negated ? 'có từ phủ định "' + hlEsc(h.cue || '') + '" trong cùng mệnh đề' : h.uncertain ? 'có từ "' + hlEsc(h.cue || '') + '" trong cùng mệnh đề' : '-'}</td></tr>`).join('')
+    : '<tr><td class="none">Không tìm thấy thuật ngữ bệnh nào trong từ điển.</td></tr>';
+  $('pc').innerHTML = promptList(d.prompts.combined);
+  $('pp').innerHTML = promptList(d.prompts.per_disease);
+  $('neg').textContent = d.negative_prompt || '(không có)';
+}
+$('btnGo').onclick = go;
+</script>
+</body></html>

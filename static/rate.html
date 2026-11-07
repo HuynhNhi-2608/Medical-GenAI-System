@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chấm điểm chuyên gia</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Chấm điểm ảnh minh họa</h1>
+  <p class="sub">Dành cho chuyên gia hoặc người đánh giá. Mỗi ảnh chấm một lần, kết quả lưu vào cơ sở dữ liệu để thống kê trong báo cáo.</p>
+  <div class="banner">Ảnh do AI tạo ra chỉ để <strong>minh họa</strong>, không phải ảnh chẩn đoán. Hãy chấm theo những gì bạn thấy trên ảnh, không đoán theo mong muốn của hệ thống.</div>
+
+  <section class="card">
+    <h2>Người chấm</h2>
+    <div class="row" style="margin-top:0">
+      <input type="text" id="rater" placeholder="Họ tên hoặc mã người chấm (ví dụ: BS. A)" maxlength="100" style="max-width:360px">
+      <button class="btn" id="btnLoad">Bắt đầu chấm</button>
+    </div>
+    <div class="err" id="err"></div>
+  </section>
+
+  <section class="card" id="work" hidden>
+    <div class="muted" id="progress" style="margin-bottom:10px"></div>
+    <div class="ratework">
+      <div>
+        <img id="img" alt="Ảnh cần chấm">
+        <div class="info"><b>Prompt:</b> <code id="prompt"></code></div>
+      </div>
+      <div>
+        <div class="info"><b>Báo cáo gốc:</b> <span id="report"></span></div>
+        <div class="info"><b>Bệnh cần thể hiện:</b> <span id="diseases"></span></div>
+        <div class="info"><b>Loại ảnh / vùng:</b> <span id="mod"></span> · <b>Độ tin cậy hệ thống:</b> <span id="rel"></span></div>
+
+        <div class="q">1. Ảnh có thể hiện đúng bệnh không? <small>(1 = hoàn toàn không, 3 = mơ hồ, 5 = thể hiện rõ)</small></div>
+        <div class="scale" id="sDisease"></div>
+        <div class="q">2. Đúng loại ảnh (CT, X-quang, MRI, siêu âm...) không?</div>
+        <div class="scale">
+          <label><input type="radio" name="mod" value="1">Đúng</label>
+          <label><input type="radio" name="mod" value="0">Sai</label>
+        </div>
+        <div class="q">3. Độ giống ảnh thật <small>(1 = rõ ràng là ảnh giả hoặc lỗi, 5 = khó phân biệt)</small></div>
+        <div class="scale" id="sReal"></div>
+        <div class="q">4. Nhận xét <small>(không bắt buộc)</small></div>
+        <textarea id="comment" maxlength="2000" placeholder="Ví dụ: có mũi tên trong ảnh, giải phẫu không đúng..."></textarea>
+        <div class="row">
+          <button class="btn" id="btnSave">Lưu và sang ảnh tiếp</button>
+          <button class="btn secondary" id="btnSkip">Bỏ qua ảnh này</button>
+        </div>
+        <div class="err" id="err2"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="done" hidden><h2>Đã chấm hết</h2><p class="muted" id="doneMsg"></p></section>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let Q = [], TOTAL = 0, DONE = 0, CUR = null, RATER = '';
+
+function scale(id, name) {
+  $(id).innerHTML = [1,2,3,4,5].map(i => `<label><input type="radio" name="${name}" value="${i}">${i}</label>`).join('');
+}
+scale('sDisease', 'disease'); scale('sReal', 'real');
+try { $('rater').value = localStorage.getItem('rater') || ''; } catch (e) {}
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let d = ''; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' && d ? d : 'Lỗi ' + r.status); }
+  return r.json();
+}
+const val = name => { const x = document.querySelector(`input[name="${name}"]:checked`); return x ? x.value : null; };
+
+async function loadQueue() {
+  RATER = $('rater').value.trim();
+  if (!RATER) { $('err').textContent = 'Hãy nhập tên người chấm trước.'; return; }
+  $('err').textContent = '';
+  try { localStorage.setItem('rater', RATER); } catch (e) {}
+  try {
+    const d = await api('/api/ratings/queue?limit=10&rater=' + encodeURIComponent(RATER));
+    Q = d.items; TOTAL = d.total_unrated; DONE = d.n_done_by_rater;
+    show();
+  } catch (e) { $('err').textContent = e.message; }
+}
+
+function show() {
+  $('work').hidden = !Q.length; $('done').hidden = !!Q.length;
+  if (!Q.length) { $('doneMsg').textContent = `Bạn đã chấm ${DONE} ảnh. Hiện không còn ảnh nào chờ chấm.`; return; }
+  CUR = Q[0];
+  $('progress').textContent = `Đã chấm ${DONE} ảnh · còn ${TOTAL} ảnh chờ chấm · ảnh số ${CUR.id}`;
+  $('img').src = CUR.url;
+  $('prompt').textContent = CUR.prompt;
+  $('report').textContent = CUR.report;
+  $('diseases').textContent = CUR.diseases || '(không có)';
+  $('mod').textContent = (CUR.modality || 'không rõ') + ' / ' + (CUR.region || 'không rõ');
+  $('rel').textContent = CUR.reliability || 'không rõ';
+  document.querySelectorAll('.ratework input[type=radio]').forEach(x => x.checked = false);
+  $('comment').value = ''; $('err2').textContent = '';
+}
+
+async function save() {
+  const d = val('disease'), m = val('mod'), r = val('real');
+  if (!d || m === null || !r) { $('err2').textContent = 'Hãy trả lời đủ câu 1, 2 và 3.'; return; }
+  $('btnSave').disabled = true;
+  try {
+    await api('/api/rating', { method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ generation_id: CUR.id, rater: RATER, disease_score: +d, modality_ok: m === '1', realism_score: +r, comment: $('comment').value.trim() }) });
+    Q.shift(); TOTAL--; DONE++;
+    if (!Q.length && TOTAL > 0) await loadQueue(); else show();
+  } catch (e) { $('err2').textContent = e.message; }
+  $('btnSave').disabled = false;
+}
+document.querySelector('.ratework').addEventListener('change', () => { $('err2').textContent = ''; });
+$('btnLoad').onclick = loadQueue;
+$('btnSave').onclick = save;
+$('btnSkip').onclick = () => { if (Q.length > 1) { Q.push(Q.shift()); show(); } };
+</script>
+</body></html>

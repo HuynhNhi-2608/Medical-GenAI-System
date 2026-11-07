@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Từ điển bệnh</title>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+  .sy { display:flex; flex-wrap:wrap; gap:4px; }
+  .sy span { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:1px 8px; font-size:.88rem; }
+  .st { display:inline-block; border-radius:999px; padding:1px 9px; font-size:.78rem; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .st.supported { color:var(--ok); border-color:var(--ok); } .st.rare { color:var(--warn); border-color:var(--warn); }
+  #tbl td { text-align:left; vertical-align:top; } #tbl th { text-align:left; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; }
+  .cols .box { margin-bottom:8px; }
+</style>
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Từ điển bệnh và thuật ngữ</h1>
+  <p class="sub">Danh sách bệnh và cách diễn đạt tiếng Việt mà hệ thống nhận ra trong báo cáo. Chỉ các bệnh có nhãn <b>được hỗ trợ</b> mới được vẽ ảnh.</p>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card">
+    <h2>Bệnh và thuật ngữ</h2>
+    <div class="row" style="margin:0 0 12px"><input type="text" id="q" placeholder="Tìm tên bệnh (tiếng Việt hoặc tiếng Anh)..." style="max-width:380px">
+      <span class="filters" style="margin:0"><button data-f="all" class="on">Tất cả</button><button data-f="supported">Được hỗ trợ</button><button data-f="rare">Thiếu dữ liệu</button><button data-f="other">Chỉ nhận diện</button></span></div>
+    <div class="muted" style="margin-bottom:10px"><span class="st supported">được hỗ trợ</span> đủ dữ liệu huấn luyện, được vẽ ảnh · <span class="st rare">thiếu dữ liệu</span> nhận diện nhưng không vẽ vì quá ít ảnh huấn luyện · <span class="st">chỉ nhận diện</span> có trong từ điển, chưa huấn luyện</div>
+    <div style="overflow-x:auto"><table id="tbl"></table></div>
+  </section>
+
+  <div class="cols">
+    <section class="card"><h2>Loại ảnh nhận ra</h2><div id="mod"></div></section>
+    <section class="card"><h2>Vùng cơ thể nhận ra</h2><div id="reg"></div></section>
+    <section class="card"><h2>Từ phủ định</h2><div class="muted">Bệnh nằm cùng mệnh đề với từ này sẽ bị loại khỏi ảnh.</div><div class="sy" id="neg" style="margin-top:8px"></div></section>
+    <section class="card"><h2>Từ không chắc chắn</h2><div class="muted">Bệnh vẫn được ghi nhận nhưng đánh dấu "không chắc chắn".</div><div class="sy" id="unc" style="margin-top:8px"></div></section>
+  </div>
+  <section class="card"><h2>Độ tin cậy</h2><div id="weak"></div></section>
+  <p class="muted">Muốn xem hệ thống áp dụng từ điển lên một báo cáo cụ thể? Dùng trang <a href="/parse">Thử phân tích</a>.</p>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const LBL = { supported: 'được hỗ trợ', rare: 'thiếu dữ liệu', other: 'chỉ nhận diện' };
+const pills = a => '<div class="sy">' + a.map(x => `<span>${esc(x)}</span>`).join('') + '</div>';
+let D = null, F = 'all';
+function draw() {
+  const q = $('q').value.trim().toLowerCase();
+  const rows = D.diseases.filter(d => (F === 'all' || d.status === F) &&
+    (!q || d.en.toLowerCase().includes(q) || d.terms.some(t => t.toLowerCase().includes(q))));
+  $('tbl').innerHTML = '<tr><th>Tên tiếng Anh (dùng trong prompt)</th><th>Cách viết tiếng Việt</th><th>Trạng thái</th></tr>' +
+    (rows.map(d => `<tr><td><b>${esc(d.en)}</b></td><td>${pills(d.terms)}</td><td><span class="st ${d.status}">${LBL[d.status]}</span></td></tr>`).join('')
+     || '<tr><td colspan="3" class="none">Không có bệnh nào khớp.</td></tr>');
+}
+(async () => {
+  try {
+    const r = await fetch('/api/dictionary'); if (!r.ok) throw new Error('Lỗi ' + r.status);
+    D = await r.json();
+  } catch (e) { $('tbl').innerHTML = `<tr><td class="none">${esc(e.message)}</td></tr>`; return; }
+  const c = k => D.diseases.filter(d => d.status === k).length;
+  $('kpis').innerHTML = [[D.diseases.length, 'bệnh trong từ điển'], [D.n_terms, 'cách viết tiếng Việt'], [c('supported'), 'bệnh được vẽ ảnh'], [D.max_per_image, 'bệnh tối đa trong một ảnh']]
+    .map(([v, t]) => `<div class="kpi"><b>${v}</b><span>${t}</span></div>`).join('');
+  $('mod').innerHTML = D.modality.map(m => `<div class="box"><b>${esc(m.name)}</b>${pills(m.words)}</div>`).join('');
+  $('reg').innerHTML = D.region.map(m => `<div class="box"><b>${esc(m.name)}</b>${pills(m.words)}</div>`).join('');
+  $('neg').innerHTML = D.negation_cues.map(x => `<span>${esc(x)}</span>`).join('');
+  $('unc').innerHTML = D.uncertain_cues.map(x => `<span>${esc(x)}</span>`).join('');
+  $('weak').innerHTML = `<p>Các loại ảnh ít dữ liệu huấn luyện (ảnh dễ sai): ${D.weak_modalities.map(x => `<span class="tag">${esc(x)}</span>`).join('') || '-'}</p>
+    <p>Các vùng ít dữ liệu huấn luyện: ${D.weak_regions.map(x => `<span class="tag">${esc(x)}</span>`).join('') || '-'}</p>`;
+  draw();
+})();
+$('q').addEventListener('input', () => D && draw());
+document.querySelector('.filters').onclick = e => {
+  const b = e.target.closest('button'); if (!b || !D) return;
+  F = b.dataset.f; document.querySelectorAll('.filters button').forEach(x => x.classList.toggle('on', x === b)); draw();
+};
+</script>
+</body></html>

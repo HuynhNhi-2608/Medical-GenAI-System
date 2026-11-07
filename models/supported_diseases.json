@@ -1,0 +1,36 @@
+{
+  "supported": [
+    "fracture",
+    "cyst",
+    "pleural effusion",
+    "abscess",
+    "aneurysm",
+    "pneumothorax",
+    "pneumonia",
+    "pulmonary nodule",
+    "intracranial hemorrhage",
+    "cardiomegaly",
+    "liver tumor",
+    "atelectasis",
+    "bowel obstruction",
+    "pancreatitis",
+    "pulmonary edema",
+    "gallstones",
+    "lung tumor"
+  ],
+  "rare": [
+    "uterine fibroid",
+    "ischemic stroke",
+    "osteoarthritis",
+    "kidney stone",
+    "sinusitis",
+    "liver cirrhosis",
+    "appendicitis",
+    "disc herniation",
+    "pulmonary tuberculosis",
+    "fatty liver",
+    "osteoporosis",
+    "brain tumor"
+  ],
+  "min_samples": 100
+}

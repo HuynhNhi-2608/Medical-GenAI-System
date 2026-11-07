@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Giới thiệu hệ thống</title>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+  .flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; counter-reset:s; }
+  .step { border:1px solid var(--line); border-radius:10px; padding:12px; background:var(--bg); position:relative; }
+  .step::before { counter-increment:s; content:counter(s); position:absolute; top:-10px; left:10px; background:var(--accent); color:#fff; width:22px; height:22px; border-radius:50%; font-size:.8rem; display:flex; align-items:center; justify-content:center; }
+  .step b { display:block; margin:4px 0; font-size:.95rem; } .step span { color:var(--muted); font-size:.85rem; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+  ul.clean { margin:6px 0 0; padding-left:20px; } ul.clean li { margin:4px 0; }
+  .links { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+  .links a { display:block; border:1px solid var(--line); border-radius:10px; padding:10px 12px; text-decoration:none; background:var(--card); color:var(--ink); }
+  .links a:hover { border-color:var(--accent); } .links small { display:block; color:var(--muted); }
+</style>
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Hệ thống hỗ trợ chẩn đoán y tế tích hợp GenAI sinh ảnh minh họa</h1>
+  <p class="sub">Nhập báo cáo lâm sàng bằng tiếng Việt, hệ thống nhận diện bệnh và sinh ảnh y khoa minh họa tương ứng để người đọc dễ hình dung.</p>
+  <div class="banner"><strong>Lưu ý quan trọng:</strong> ảnh do AI tạo ra chỉ mang tính <strong>minh họa</strong>, không phải ảnh chụp thật của bệnh nhân và <strong>không dùng để chẩn đoán hay điều trị</strong>. Mọi ảnh đều được đóng dấu chìm. Chỉ nhập dữ liệu giả lập.</div>
+
+  <section class="card">
+    <h2>Hệ thống hoạt động như thế nào</h2>
+    <div class="flow">
+      <div class="step"><b>Báo cáo tiếng Việt</b><span>Người dùng nhập báo cáo ca chụp</span></div>
+      <div class="step"><b>Nhận diện bệnh</b><span>Từ điển và quy tắc, có thể thêm mô hình NER; xử lý phủ định, không chắc chắn</span></div>
+      <div class="step"><b>Dựng prompt tiếng Anh</b><span id="fmt">loại ảnh of vùng: bệnh 1, bệnh 2</span></div>
+      <div class="step"><b>Sinh ảnh</b><span>Stable Diffusion 1.5 kèm LoRA huấn luyện trên ảnh y khoa</span></div>
+      <div class="step"><b>Dấu chìm và cảnh báo</b><span>Đóng dấu "AI minh họa", cảnh báo độ tin cậy theo loại ảnh/vùng</span></div>
+      <div class="step"><b>Lưu và đánh giá</b><span>Lưu SQL Server, chuyên gia chấm điểm</span></div>
+    </div>
+  </section>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="cols">
+    <section class="card">
+      <h2>Công nghệ sử dụng</h2>
+      <ul class="clean">
+        <li><b>Giao diện và máy chủ:</b> FastAPI, trang web tĩnh</li>
+        <li><b>Sinh ảnh:</b> Stable Diffusion 1.5 + LoRA (PyTorch, diffusers)</li>
+        <li><b>Xử lý ngôn ngữ:</b> từ điển Việt-Anh, quy tắc phủ định, NER tùy chọn</li>
+        <li><b>Cơ sở dữ liệu:</b> SQL Server qua SQLAlchemy</li>
+        <li><b>Đánh giá:</b> FID, KID, CLIP score, độ chính xác loại ảnh và chấm điểm chuyên gia</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h2>Giới hạn cần biết</h2>
+      <ul class="clean" id="limits"><li class="none">Đang tải...</li></ul>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Các trang trong hệ thống</h2>
+    <div class="links">
+      <a href="/">Phân tích và sinh ảnh<small>Nhập báo cáo, nhận ảnh minh họa</small></a>
+      <a href="/parse">Thử phân tích<small>Xem hệ thống hiểu báo cáo ra sao, không cần GPU</small></a>
+      <a href="/cases">Lịch sử ca<small>Xem lại các ca đã lưu</small></a>
+      <a href="/compare">So sánh mô hình<small>SD gốc, LoRA v1, LoRA v2</small></a>
+      <a href="/evaluation">Kết quả đánh giá<small>FID, KID, CLIP, độ chính xác loại ảnh</small></a>
+      <a href="/rate">Chấm điểm<small>Chuyên gia chấm ảnh đã sinh</small></a>
+      <a href="/stats">Thống kê<small>Tổng hợp từ cơ sở dữ liệu</small></a>
+      <a href="/dictionary">Từ điển bệnh<small>Bệnh và thuật ngữ hệ thống hiểu</small></a>
+      <a href="/export">Xuất kết quả<small>In PDF từng ca, tải CSV</small></a>
+    </div>
+  </section>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function j(u) { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); }
+(async () => {
+  const kp = [];
+  try {
+    const d = await j('/api/dictionary');
+    const n = d.diseases.filter(x => x.status === 'supported').length;
+    kp.push([n, 'bệnh được hỗ trợ sinh ảnh'], [d.n_terms, 'thuật ngữ tiếng Việt trong từ điển']);
+  } catch (e) {}
+  try {
+    const d = await j('/static/data/eval_results.json');
+    const m = (d.modes.short.models || []).find(x => x.id === 'lora_v2');
+    if (m) kp.push([m.fid, 'FID của mô hình LoRA v2 (thấp hơn là tốt)'], [m.modality_acc + '%', 'đúng loại ảnh (CLIP zero-shot)']);
+    $('limits').innerHTML = d.caveats.map(c => `<li>${esc(c)}</li>`).join('');
+  } catch (e) { $('limits').innerHTML = '<li>Ảnh chỉ mang tính minh họa, chưa được chuyên gia kiểm chứng.</li>'; }
+  $('kpis').innerHTML = kp.map(([v, t]) => `<div class="kpi"><b>${esc(v)}</b><span>${esc(t)}</span></div>`).join('');
+})();
+</script>
+</body></html>

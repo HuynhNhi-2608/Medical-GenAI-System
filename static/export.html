@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xuất kết quả</title>
+<link rel="stylesheet" href="/static/site.css">
+<style>
+  @media print {
+    :root { --bg:#fff; --card:#fff; --ink:#000; --muted:#444; --line:#bbb; --accent:#0b6b8f; --warn:#7a3c00; --warnbg:#fff; --ok:#14532d; --bad:#9f1d12; }
+    nav.top, .noprint { display:none !important; }
+    body { font-size:11.5pt; } main { padding:0; max-width:none; }
+    .card, .gen { break-inside:avoid; box-shadow:none; }
+    .hl { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    a { color:inherit; text-decoration:none; }
+  }
+  .doc-title { border-bottom:2px solid var(--accent); padding-bottom:8px; margin-bottom:14px; }
+  .foot { margin-top:20px; padding-top:8px; border-top:1px solid var(--line); font-size:.82rem; color:var(--muted); }
+  .dl { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+</style>
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <!-- Chế độ 1: chọn ca / tải CSV (khi không có ?id=) -->
+  <div id="pick">
+    <h1>Xuất kết quả</h1>
+    <p class="sub">In từng ca ra PDF để đính kèm báo cáo, hoặc tải toàn bộ dữ liệu dạng CSV (mở được bằng Excel) để thống kê.</p>
+    <div class="dl">
+      <section class="card"><h2>Điểm chấm của chuyên gia</h2><p class="muted">Mỗi dòng là một lượt chấm, kèm báo cáo, prompt và cấu hình của ảnh.</p><a href="/api/export/ratings.csv" download><button class="btn">Tải diem_cham.csv</button></a></section>
+      <section class="card"><h2>Toàn bộ ảnh đã sinh</h2><p class="muted">Mỗi dòng là một ảnh, kèm báo cáo gốc, seed, số bước, số lượt chấm.</p><a href="/api/export/generations.csv" download><button class="btn">Tải anh_da_sinh.csv</button></a></section>
+    </div>
+    <section class="card" style="margin-top:16px">
+      <h2>In một ca ra PDF</h2>
+      <div class="row" style="margin:0 0 12px"><input type="text" id="q" placeholder="Tìm theo nội dung báo cáo..." style="max-width:380px"><button class="btn secondary" id="btnQ">Tìm</button></div>
+      <div class="err" id="listErr"></div>
+      <div style="overflow-x:auto"><table id="rows" class="leftcols"></table></div>
+    </section>
+  </div>
+
+  <!-- Chế độ 2: bản in của một ca (khi có ?id=N) -->
+  <div id="doc" hidden>
+    <div class="row noprint" style="margin:0 0 14px"><a href="/export">← Chọn ca khác</a><button class="btn" id="btnPrint">In / Lưu thành PDF</button><span class="muted">Trong hộp thoại in, chọn máy in "Lưu thành PDF" (Save as PDF).</span></div>
+    <div class="err" id="dErr"></div>
+    <div id="content" hidden>
+      <div class="doc-title"><h1 id="dTitle"></h1><div class="muted" id="dSub"></div></div>
+      <div class="banner">Ảnh trong tài liệu này do AI sinh ra chỉ nhằm <strong>minh họa</strong>, chưa được chuyên gia y khoa kiểm chứng, không dùng để chẩn đoán hay điều trị.</div>
+      <section class="card"><h2>Báo cáo lâm sàng</h2><div id="dLegend"></div><div class="reportbox" id="dText"></div></section>
+      <section class="card"><h2>Kết quả phân tích</h2><div class="groups" id="dFind"></div></section>
+      <h2 style="margin:18px 0 10px">Ảnh đã sinh và đánh giá</h2>
+      <div id="dGens"></div>
+      <div class="foot" id="foot"></div>
+    </div>
+  </div>
+</main>
+<script src="/static/nav.js"></script>
+<script src="/static/hl.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const E = hlEsc;
+const stars = v => v == null ? '-' : v;
+const STATUS_VI = { supported: ['Được hỗ trợ (đã vẽ)', 'ok'], unsupported: ['Chưa hỗ trợ', 'mute'], negated: ['Bị loại do phủ định', 'bad'], uncertain: ['Có từ không chắc chắn', ''], ner_only: ['Chỉ NER thấy', ''] };
+const tags = (arr, cls) => arr.length ? arr.map(x => `<span class="tag ${cls}">${E(x)}</span>`).join('') : '<span class="none">không có</span>';
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) { let d = ''; try { d = (await r.json()).detail; } catch (e) {} throw new Error(typeof d === 'string' && d ? d : 'Lỗi ' + r.status); }
+  return r.json();
+}
+
+/* ---------- Chế độ chọn ca ---------- */
+let Q = '';
+async function loadList() {
+  $('listErr').textContent = '';
+  try {
+    const d = await api(`/api/reports?limit=50&offset=0&q=${encodeURIComponent(Q)}`);
+    $('rows').innerHTML = '<tr><th>Ca</th><th>Thời gian</th><th>Báo cáo</th><th>Ảnh</th><th></th></tr>' + (d.items.map(it => `
+      <tr><td>#${it.id}</td><td>${E(it.created_at.replace('T', ' '))}</td><td>${E(it.report.length > 90 ? it.report.slice(0, 90) + '…' : it.report)}</td>
+      <td>${it.n_generations}</td><td><a href="/export?id=${it.id}">Mở bản in</a></td></tr>`).join('')
+      || '<tr><td colspan="5" class="none">Chưa có ca nào' + (Q ? ' khớp từ khóa.' : '.') + '</td></tr>');
+  } catch (e) { $('listErr').textContent = e.message; }
+}
+$('btnQ').onclick = () => { Q = $('q').value.trim(); loadList(); };
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnQ').click(); });
+
+/* ---------- Chế độ bản in ---------- */
+async function loadDoc(id) {
+  try {
+    const d = await api('/api/reports/' + encodeURIComponent(id));
+    document.title = 'Ca ' + d.id + ' - bao cao';
+    $('dTitle').textContent = `Ca #${d.id}: kết quả phân tích và ảnh minh họa`;
+    $('dSub').textContent = `Thời gian lưu: ${d.created_at.replace('T', ' ')} · Xuất ngày: ${new Date().toLocaleString('vi-VN')}`;
+    $('dText').textContent = d.report;
+    api('/api/parse', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ report: d.report }) })
+      .then(p => { $('dLegend').innerHTML = HL_LEGEND; $('dText').innerHTML = renderHighlight(p.text, p.analysis.hits); }).catch(() => {});
+    const by = {}; d.findings.forEach(f => (by[f.status] = by[f.status] || []).push(f.disease));
+    $('dFind').innerHTML = `<div class="box"><b>Loại ảnh / vùng</b><span class="tag">${E(d.modality || 'không rõ')}</span><span class="tag">${E(d.region || 'không rõ vùng')}</span></div>` +
+      Object.keys(STATUS_VI).map(k => `<div class="box"><b>${STATUS_VI[k][0]}</b>${tags(by[k] || [], STATUS_VI[k][1])}</div>`).join('');
+    $('dGens').innerHTML = d.generations.map(g => {
+      const rs = g.ratings, avg = k => { const v = rs.map(r => r[k]).filter(x => x != null); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : '-'; };
+      return `<div class="gen">
+        <img src="${E(g.url)}" alt="Ảnh ${g.id}">
+        <div>
+          <div><b>Ảnh #${g.id}</b> <span class="tag mute">độ tin cậy: ${E(g.reliability || 'không rõ')}</span></div>
+          <div class="prompt">${E(g.prompt)}</div>
+          <div class="meta">Bệnh: ${E(g.diseases || '(không có)')} · seed ${stars(g.seed)} · ${E(g.lora_name || '')} · ${stars(g.steps)} bước · guidance ${stars(g.guidance)}</div>
+          <div class="meta">Mô hình nền: ${E(g.model_id || '')}</div>
+          <h3 style="font-size:.95rem;margin:10px 0 6px">Đánh giá (${rs.length} lượt)${rs.length ? ` · trung bình: đúng bệnh ${avg('disease_score')}, giống thật ${avg('realism_score')}` : ''}</h3>
+          ${rs.length ? '<table><tr><th>Người chấm</th><th>Đúng bệnh</th><th>Đúng loại ảnh</th><th>Giống thật</th><th>Nhận xét</th></tr>' +
+            rs.map(r => `<tr><td>${E(r.rater)}</td><td>${stars(r.disease_score)}</td><td>${r.modality_ok == null ? '-' : r.modality_ok ? 'Đúng' : 'Sai'}</td><td>${stars(r.realism_score)}</td><td style="text-align:left">${E(r.comment)}</td></tr>`).join('') + '</table>'
+            : '<div class="none">Chưa có đánh giá.</div>'}
+        </div></div>`;
+    }).join('') || '<p class="muted">Ca này chưa có ảnh nào.</p>';
+    $('foot').textContent = 'Tài liệu được xuất từ hệ thống hỗ trợ chẩn đoán tích hợp GenAI (đề tài niên luận). Dữ liệu giả lập, ảnh chỉ mang tính minh họa.';
+    $('content').hidden = false;
+  } catch (e) { $('dErr').textContent = e.message; }
+}
+$('btnPrint').onclick = () => window.print();
+
+const id = new URLSearchParams(location.search).get('id');
+if (id) { $('pick').hidden = true; $('doc').hidden = false; loadDoc(id); } else loadList();
+</script>
+</body></html>

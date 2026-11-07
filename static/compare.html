@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>So sánh mô hình</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>So sánh mô hình</h1>
+  <p class="sub">Cùng một prompt và cùng seed, ảnh sinh bởi SD 1.5 gốc, LoRA v1 và LoRA v2.</p>
+  <div class="banner">Ảnh do AI tạo ra chỉ để <strong>minh họa</strong>, không phải ảnh chẩn đoán. Mỗi ô chỉ là <strong>một mẫu với một seed</strong>, nên chỉ nhận xét mang tính định tính; số liệu định lượng xem ở trang "Kết quả đánh giá". Ca gắn nhãn "nhóm yếu" là nhóm có ít dữ liệu huấn luyện.</div>
+  <div class="filters" id="filters"></div>
+  <div id="list"></div>
+  <p class="muted" id="neg"></p>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let DATA = null, FILTER = 'all';
+function render() {
+  const items = DATA.items.filter(it => FILTER === 'all' || (FILTER === 'weak' ? it.weak : !it.weak));
+  $('list').innerHTML = items.map(it => `
+    <div class="case">
+      <h3>${esc(it.title)}${it.weak ? '<span class="tag">nhóm yếu</span>' : ''}</h3>
+      <div class="rep"><b>Báo cáo:</b> ${esc(it.report_vi)}</div>
+      <div class="rep"><b>Prompt:</b> <code>${esc(it.prompt)}</code> · seed ${it.seed}</div>
+      <div class="trio">${DATA.models.map(m => `
+        <figure>
+          <img src="/static/compare/${it.id}_${m.id}.png" alt="${esc(m.name)}: ${esc(it.title)}" loading="lazy"
+               onerror="this.outerHTML='<div class=&quot;ph&quot;>chưa có ảnh</div>'">
+          <figcaption>${esc(m.name)}</figcaption>
+        </figure>`).join('')}</div>
+    </div>`).join('') || '<p class="muted">Không có ca nào.</p>';
+}
+fetch('/static/data/compare.json').then(r => r.json()).then(d => {
+  DATA = d;
+  $('neg').textContent = 'Negative prompt dùng cho cả ba mô hình: ' + d.negative_prompt;
+  const opts = [['all','Tất cả'],['strong','Nhóm đủ dữ liệu'],['weak','Nhóm yếu']];
+  $('filters').innerHTML = opts.map(([k,t]) => `<button data-k="${k}" class="${k===FILTER?'on':''}">${t}</button>`).join('');
+  $('filters').onclick = e => { const b = e.target.closest('button'); if (!b) return; FILTER = b.dataset.k;
+    [...$('filters').children].forEach(x => x.classList.toggle('on', x === b)); render(); };
+  render();
+}).catch(e => { $('list').textContent = 'Không đọc được compare.json: ' + e.message; });
+</script>
+</body></html>

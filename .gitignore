@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+static/generated_images/*
+!static/generated_images/.gitkeep
+models/ner_model/*
+!models/ner_model/.gitkeep

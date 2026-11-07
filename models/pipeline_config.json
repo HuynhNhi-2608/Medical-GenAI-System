@@ -1,0 +1,19 @@
+{
+  "model_id": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+  "resolution": 512,
+  "steps": 25,
+  "guidance": 7.0,
+  "max_diseases_per_image": 3,
+  "max_tokens": 77,
+  "negative_prompt": "arrow, arrowhead, asterisk, text, letters, annotation, label, watermark, logo",
+  "weak_modalities": [
+    "ultrasound",
+    "angiography",
+    "MRI"
+  ],
+  "weak_regions": [
+    "pelvis",
+    "spine",
+    "musculoskeletal"
+  ]
+}

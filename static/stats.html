@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thống kê hệ thống</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Thống kê hệ thống</h1>
+  <p class="sub">Tổng hợp từ cơ sở dữ liệu SQL Server: báo cáo đã nhập, ảnh đã sinh và điểm chấm của chuyên gia.</p>
+  <div class="banner" id="warn" hidden></div>
+  <div class="kpis" id="kpis"></div>
+  <div class="two">
+    <section class="card"><h2>Bệnh được hỗ trợ xuất hiện nhiều nhất</h2><div id="dis"></div></section>
+    <section class="card"><h2>Kết quả phân loại các bệnh tìm thấy</h2><div id="status"></div></section>
+    <section class="card"><h2>Loại ảnh trong báo cáo</h2><div id="mod"></div></section>
+    <section class="card"><h2>Vùng cơ thể trong báo cáo</h2><div id="reg"></div></section>
+    <section class="card"><h2>Độ tin cậy của ảnh đã sinh</h2><div id="rel"></div></section>
+  </div>
+  <section class="card"><h2>Điểm chuyên gia chấm</h2><div id="rate"></div></section>
+  <section class="card"><h2>Điểm trung bình theo độ tin cậy</h2><div style="overflow-x:auto"><table id="byRel"></table></div></section>
+  <section class="card"><h2>Điểm trung bình theo loại ảnh</h2><div style="overflow-x:auto"><table id="byMod"></table></div></section>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const STATUS = {supported:'Được hỗ trợ (vẽ ảnh)', unsupported:'Không hỗ trợ', negated:'Bị loại do phủ định', uncertain:'Không chắc chắn', ner_only:'Chỉ NER thấy'};
+
+function bars(arr, label = x => x) {
+  if (!arr || !arr.length || arr.every(x => !x.n)) return '<div class="none">Chưa có dữ liệu.</div>';
+  const max = Math.max(...arr.map(x => x.n));
+  return arr.map(x => `<div class="barrow"><span title="${esc(x.label)}">${esc(label(x.label))}</span><div class="track"><div class="fill" style="width:${Math.max(2, x.n / max * 100)}%"></div></div><span class="val">${x.n}</span></div>`).join('');
+}
+function table(rows) {
+  if (!rows || !rows.length) return '<tr><td class="none">Chưa có đánh giá.</td></tr>';
+  const f = v => v == null ? '<span class="none">-</span>' : Number(v).toFixed(2);
+  return '<tr><th>Nhóm</th><th>Số lượt chấm</th><th>Điểm đúng bệnh (1-5)</th><th>Điểm độ giống thật (1-5)</th></tr>' +
+    rows.map(r => `<tr><td>${esc(r.label)}</td><td>${r.n}</td><td>${f(r.avg_disease)}</td><td>${f(r.avg_realism)}</td></tr>`).join('');
+}
+fetch('/api/stats').then(r => { if (!r.ok) throw new Error('Lỗi ' + r.status + (r.status === 503 ? ' (cơ sở dữ liệu chưa kết nối)' : '')); return r.json(); }).then(d => {
+  const t = d.totals, rs = d.rating_summary || {};
+  const pct = v => v == null ? '-' : (v * 100).toFixed(1) + '%';
+  $('kpis').innerHTML = [
+    [t.reports, 'báo cáo đã nhập'], [t.generations, 'ảnh đã sinh'], [t.ratings, 'lượt chấm điểm'], [t.raters, 'người chấm'],
+    [rs.avg_disease_score ?? '-', 'điểm đúng bệnh TB (1-5)'], [rs.avg_realism_score ?? '-', 'điểm độ giống thật TB (1-5)'], [pct(rs.modality_ok_rate), 'đúng loại ảnh']
+  ].map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join('');
+  if (t.ratings < 20) { $('warn').hidden = false; $('warn').textContent = `Mới có ${t.ratings} lượt chấm. Với số lượng nhỏ, các điểm trung bình chỉ mang tính tham khảo, chưa đủ để kết luận.`; }
+  $('dis').innerHTML = bars(d.supported_diseases);
+  $('status').innerHTML = bars(d.status, k => STATUS[k] || k);
+  $('mod').innerHTML = bars(d.modality);
+  $('reg').innerHTML = bars(d.region);
+  $('rel').innerHTML = bars(d.reliability);
+  $('rate').innerHTML = `<div class="two"><div><h3 style="font-size:.95rem;margin:0 0 6px">Đúng bệnh (1-5)</h3>${bars(d.score_dist.disease)}</div><div><h3 style="font-size:.95rem;margin:0 0 6px">Độ giống thật (1-5)</h3>${bars(d.score_dist.realism)}</div></div>`;
+  $('byRel').innerHTML = table(d.ratings_by_reliability);
+  $('byMod').innerHTML = table(d.ratings_by_modality);
+}).catch(e => { $('warn').hidden = false; $('warn').textContent = 'Không tải được thống kê: ' + e.message; });
+</script>
+</body></html>

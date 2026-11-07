@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kết quả đánh giá mô hình</title>
+<link rel="stylesheet" href="/static/site.css">
+</head><body>
+<nav class="top" id="nav"></nav>
+<main>
+  <h1>Kết quả đánh giá mô hình</h1>
+  <p class="sub">So sánh SD 1.5 gốc, LoRA v1, LoRA v2 và ảnh thật trong cùng điều kiện đánh giá.</p>
+  <div class="filters" id="filters"></div>
+  <div class="banner" id="setup"></div>
+  <section class="card"><h2>Bảng tổng hợp</h2><div style="overflow-x:auto"><table id="tbl"></table></div>
+    <p class="muted" id="deltaNote"></p></section>
+  <section class="card"><h2>Biểu đồ theo từng chỉ số</h2><div id="charts"></div></section>
+  <section class="card"><h2>Bộ nhận diện thực thể (NER)</h2><div id="ner"></div></section>
+  <section class="card"><h2>Lưu ý khi đọc kết quả</h2><ul id="caveats"></ul></section>
+</main>
+<script src="/static/nav.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const METRICS = [
+  {k:"fid", name:"FID", better:"low", hint:"Thấp hơn là tốt hơn (chỉ so tương đối)", dec:2},
+  {k:"kid", name:"KID", better:"low", hint:"Thấp hơn là tốt hơn", dec:4},
+  {k:"clip", name:"CLIP score", better:"high", hint:"Cao hơn là tốt hơn (CLIP tổng quát, chỉ tham khảo)", dec:2},
+  {k:"modality_acc", name:"Độ chính xác loại ảnh (%)", better:"high", hint:"Cao hơn là tốt hơn (CLIP zero-shot, 4 lớp, mức ngẫu nhiên 25%)", dec:1},
+];
+const has = v => v !== null && v !== undefined;
+const fmt = (v, d) => has(v) ? Number(v).toFixed(d) : '<span class="none">chưa có</span>';
+let DATA = null, MODE = null;
+
+function render() {
+  const md = DATA.modes[MODE], s = DATA.setup || {}, models = md.models;
+  $('setup').innerHTML = `<strong>Điều kiện đánh giá:</strong> ${esc(md.label)} · số ảnh = ${has(md.n_images)?md.n_images:'chưa ghi'} (độ chính xác loại ảnh tính trên ${has(md.n_modality)?md.n_modality:'chưa ghi'} ảnh) · số seed = ${has(s.seeds)?s.seeds:'chưa ghi'} · độ phân giải = ${has(s.resolution)?s.resolution:'chưa ghi'} · số bước = ${has(s.steps)?s.steps:'chưa ghi'} · negative prompt: ${s.negative_prompt ? 'có' : 'không'}.`;
+  const base = models.find(m => m.id === 'base');
+  const head = '<tr><th>Mô hình</th>' + METRICS.map(m => `<th>${m.name}</th>`).join('') + '</tr>';
+  const rows = models.map(m => '<tr><td>' + esc(m.name) + '</td>' + METRICS.map(x => {
+    let cell = fmt(m[x.k], x.dec);
+    if (x.k === 'clip' && has(m.clip_lo) && has(m.clip_hi)) cell += ` <small class="none">[${Number(m.clip_lo).toFixed(1)}; ${Number(m.clip_hi).toFixed(1)}]</small>`;
+    if (base && m.id !== 'base' && !m.real && has(m[x.k]) && has(base[x.k]) && base[x.k] !== 0) {
+      if (x.k === 'modality_acc') {
+        const pt = m[x.k]-base[x.k];
+        cell += ` <span class="${pt>0?'good':''}">(${pt>0?'+':''}${pt.toFixed(1)} điểm)</span>`;
+      } else {
+        const pct = x.better === 'low' ? (base[x.k]-m[x.k])/base[x.k] : (m[x.k]-base[x.k])/base[x.k];
+        cell += ` <span class="${pct>0?'good':''}">(${pct>0?'+':''}${(pct*100).toFixed(1)}%)</span>`;
+      }
+    }
+    return '<td>' + cell + '</td>';
+  }).join('') + '</tr>').join('');
+  $('tbl').innerHTML = head + rows;
+  $('deltaNote').textContent = 'Phần trong ngoặc là mức cải thiện so với SD 1.5 gốc (dương = tốt hơn): phần trăm tương đối với FID, KID, CLIP; số điểm phần trăm với độ chính xác loại ảnh. Phần trong ngoặc vuông là khoảng tin cậy 95% của CLIP.';
+
+  $('charts').innerHTML = METRICS.map(x => {
+    const vals = models.filter(m => has(m[x.k]));
+    if (!vals.length) return `<div class="metric"><h3>${x.name}</h3><div class="hint">${x.hint}</div><div class="none">Chưa có số liệu.</div></div>`;
+    const max = Math.max(...vals.map(m => m[x.k]));
+    const bars = models.map(m => has(m[x.k])
+      ? `<div class="barrow"><span>${esc(m.name)}</span><div class="track"><div class="fill ${m.real?'real':''}" style="width:${Math.max(2, m[x.k]/max*100)}%"></div></div><span class="val">${Number(m[x.k]).toFixed(x.dec)}</span></div>`
+      : `<div class="barrow"><span>${esc(m.name)}</span><span class="none" style="grid-column:2/4">chưa có</span></div>`).join('');
+    return `<div class="metric"><h3>${x.name}</h3><div class="hint">${x.hint}</div>${bars}</div>`;
+  }).join('');
+}
+
+fetch('/static/data/eval_results.json').then(r => r.json()).then(d => {
+  DATA = d;
+  const keys = Object.keys(d.modes);
+  MODE = keys[0];
+  $('filters').innerHTML = keys.map(k => `<button data-k="${k}" class="${k===MODE?'on':''}">${esc(d.modes[k].label)}</button>`).join('');
+  $('filters').onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    MODE = b.dataset.k;
+    [...$('filters').children].forEach(x => x.classList.toggle('on', x === b));
+    render();
+  };
+  render();
+  const n = d.ner || {};
+  $('ner').innerHTML = `<table><tr><th>Chỉ số</th><th>Giá trị</th></tr>
+    <tr><td>F1 micro (tập test ViMedNer)</td><td>${fmt(n.micro_f1,3)}</td></tr>
+    <tr><td>F1 thực thể ten_benh</td><td>${fmt(n.ten_benh_f1,2)}</td></tr>
+    <tr><td>Baseline từ điển (ten_benh)</td><td>${fmt(n.dictionary_baseline_f1,2)}</td></tr></table>
+    <p class="muted">NER huấn luyện trên ViMedNer nên lệch miền với báo cáo chẩn đoán hình ảnh. Vì vậy hệ thống dùng luật và từ điển để quyết định bệnh được vẽ; NER chỉ gắn cờ gợi ý.</p>`;
+  $('caveats').innerHTML = (d.caveats || []).map(c => '<li>' + esc(c) + '</li>').join('');
+}).catch(e => { $('setup').textContent = 'Không đọc được eval_results.json: ' + e.message; });
+</script>
+</body></html>

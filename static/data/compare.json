@@ -1,0 +1,16 @@
+{
+  "negative_prompt": "arrow, arrowhead, asterisk, text, letters, annotation, label, watermark, logo",
+  "models": [
+    {"id": "base", "name": "SD 1.5 gốc"},
+    {"id": "lora_v1", "name": "LoRA v1"},
+    {"id": "lora_v2", "name": "LoRA v2"}
+  ],
+  "items": [
+    {"id": "ct_pneumonia", "title": "CT ngực: viêm phổi", "report_vi": "Chụp CT ngực: viêm phổi thùy dưới phải.", "prompt": "CT of chest: pneumonia", "seed": 1234, "weak": false},
+    {"id": "xray_effusion", "title": "X-quang ngực: tràn dịch màng phổi", "report_vi": "X-quang ngực thẳng: tràn dịch màng phổi trái.", "prompt": "X-ray of chest: pleural effusion", "seed": 1234, "weak": false},
+    {"id": "ct_ich", "title": "CT sọ: xuất huyết nội sọ", "report_vi": "CT sọ não: xuất huyết nội sọ.", "prompt": "CT of head: intracranial hemorrhage", "seed": 1234, "weak": true},
+    {"id": "mri_cyst", "title": "MRI: nang", "report_vi": "MRI ổ bụng: nang gan.", "prompt": "MRI of abdomen: cyst", "seed": 1234, "weak": true},
+    {"id": "us_gallstones", "title": "Siêu âm bụng: sỏi mật", "report_vi": "Siêu âm bụng: sỏi túi mật.", "prompt": "ultrasound of abdomen: gallstones", "seed": 1234, "weak": true},
+    {"id": "ct_liver", "title": "CT bụng: u gan", "report_vi": "CT bụng có cản quang: u gan.", "prompt": "CT of abdomen: liver tumor", "seed": 1234, "weak": false}
+  ]
+}

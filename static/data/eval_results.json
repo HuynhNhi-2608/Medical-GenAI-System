@@ -1,0 +1,37 @@
+{
+  "setup": {"seeds": 1, "resolution": 512, "steps": 25, "negative_prompt": false},
+  "modes": {
+    "short": {
+      "label": "Prompt ngắn (short)",
+      "n_images": 200,
+      "n_modality": 157,
+      "models": [
+        {"id": "base", "name": "SD 1.5 gốc", "fid": 235.3, "kid": 0.0745, "clip": 26.63, "clip_lo": 26.3, "clip_hi": 27.0, "modality_acc": 61.8},
+        {"id": "lora_v1", "name": "LoRA v1", "fid": 172.9, "kid": 0.0269, "clip": 30.83, "clip_lo": 30.5, "clip_hi": 31.1, "modality_acc": 82.2},
+        {"id": "lora_v2", "name": "LoRA v2", "fid": 164.2, "kid": 0.0233, "clip": 30.9, "clip_lo": 30.7, "clip_hi": 31.1, "modality_acc": 86.6},
+        {"id": "real", "name": "Ảnh thật (tham chiếu)", "fid": null, "kid": null, "clip": 31.45, "clip_lo": 31.2, "clip_hi": 31.7, "modality_acc": 89.2, "real": true}
+      ]
+    },
+    "full": {
+      "label": "Prompt đầy đủ (full)",
+      "n_images": 100,
+      "n_modality": 78,
+      "models": [
+        {"id": "base", "name": "SD 1.5 gốc", "fid": 267.9, "kid": 0.0624, "clip": 27.48, "clip_lo": 26.9, "clip_hi": 28.0, "modality_acc": 66.7},
+        {"id": "lora_v1", "name": "LoRA v1", "fid": 211.7, "kid": 0.025, "clip": 31.27, "clip_lo": 30.8, "clip_hi": 31.7, "modality_acc": 85.9},
+        {"id": "lora_v2", "name": "LoRA v2", "fid": 206.9, "kid": 0.0206, "clip": 31.65, "clip_lo": 31.2, "clip_hi": 32.1, "modality_acc": 92.3},
+        {"id": "real", "name": "Ảnh thật (tham chiếu)", "fid": null, "kid": null, "clip": 32.45, "clip_lo": 32.0, "clip_hi": 32.9, "modality_acc": 91.0, "real": true}
+      ]
+    }
+  },
+  "ner": {"micro_f1": 0.672, "ten_benh_f1": 0.8, "dictionary_baseline_f1": 0.66},
+  "caveats": [
+    "Mỗi cấu hình chỉ chạy 1 seed và số mẫu đánh giá nhỏ, nên chênh lệch nhỏ có thể là nhiễu.",
+    "FID tính trên 100–200 ảnh (ít hơn số chiều đặc trưng 2048) nên bị lệch cao; chỉ dùng để so tương đối giữa các mô hình, ưu tiên đọc KID.",
+    "CLIP score = 100 × cosine, khác thang CLIPScore (2,5 × cosine) của nhiều bài báo; không so trực tiếp.",
+    "Độ chính xác loại ảnh là phân loại zero-shot bằng CLIP trên 4 lớp (CT, X-quang, MRI, siêu âm), mức ngẫu nhiên 25%; dòng ảnh thật là trần của bộ phân loại.",
+    "CLIP vừa dùng tính CLIP score vừa dùng chấm loại ảnh nên hai chỉ số không độc lập.",
+    "Đánh giá chưa dùng negative prompt, khác với ứng dụng thực tế.",
+    "FID/KID phụ thuộc tập ảnh chuẩn, số ảnh và độ phân giải; không so trực tiếp với con số của bài báo khác."
+  ]
+}
